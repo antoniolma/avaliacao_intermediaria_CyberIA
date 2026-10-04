@@ -2,5 +2,23 @@
 __pycache__/
 roteiro/
 env
-dados/R2_*
-dados/Aula07*
+env/
+.venv/
+
+# Datasets de entrada: grandes e redistribuidos pela disciplina.
+# A regra generica substitui `dados/R2_*` e `dados/Aula07*`, que nao cobriam
+# `creditcard.csv.gz` — o nome que o notebook efetivamente le.
+dados/*.csv
+dados/*.csv.gz
+
+# Artefatos de compilacao do LaTeX (o .tex e o .pdf sao versionados).
+*.aux
+*.out
+*.synctex.gz
+relatorio_*.log
+
+# Figuras do relatorio: derivadas do notebook, regeneradas por
+# `python extrair_figuras.py`. O entregavel e o PDF, que ja as embute.
+_figs/
+
+# NAO ignorar: saida/ e entregavel obrigatorio.

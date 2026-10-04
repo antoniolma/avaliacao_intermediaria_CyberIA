@@ -1,0 +1,433 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage[margin=1.85cm,top=1.5cm,bottom=1.6cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{caption}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{insper}{RGB}{200,16,46}
+\captionsetup{font=small,labelfont={small,bf},skip=3pt}
+\titlespacing*{\section}{0pt}{7pt}{3pt}
+\titlespacing*{\subsection}{0pt}{6pt}{2pt}
+\titleformat{\section}{\normalfont\large\bfseries\color{insper}}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalfont\normalsize\bfseries}{}{0em}{}
+\setlength{\parskip}{2.5pt}
+\setlength{\parindent}{0pt}
+\pagestyle{plain}
+
+\newcommand{\resp}[1]{\subsection{#1}}
+
+\begin{document}
+
+\begin{center}
+{\LARGE\bfseries Quanto custa um alerta?}\\[2pt]
+{\small Avaliação Intermediária · Cibersegurança Aplicada com Inteligência Artificial · Insper 2026-2}\\[4pt]
+{\small\bfseries Antonio Almeida e Luka Figueiredo} \quad·\quad
+{\small código \texttt{d23bda} · \texttt{random\_state = 3527138017} · classe difícil: \texttt{DoS slowloris} + \texttt{DoS Slowhttptest}}
+\end{center}
+\vspace{-4pt}\hrule\vspace{6pt}
+
+{\small\textbf{Nota de método.} Limpeza equivalente à do item e) do Roteiro 2: 6.313 linhas
+removidas (5,65\%) e 18 colunas, restando \textbf{105.366 × 65}. Somadas as 5 features
+derivadas do item g) do Roteiro 2, \textbf{66 features} entram no modelo. Split temporal como
+o enunciado pede --- dentro de cada dia, os primeiros 70\% da \texttt{ordem\_captura} treinam:
+treino 73.754 (prevalência de ataque 0,4282), teste 31.612 (0,3349). Esse corte deixa
+\textbf{oito das quinze classes fora do teste}, a difícil entre elas; o item c) usa um
+\emph{split auxiliar} por \texttt{(dia, Label)} só para essa medida, sem alterar o modelo nem
+os arquivos de \texttt{saida/}. Convenção de decisão em todo o notebook: \texttt{p >= limiar}
+(os 102 empates em 0,5 contam como alerta, ao contrário de \texttt{predict()}). Na Parte B,
+\texttt{Time} fica fora das features.}
+
+\section{Parte A --- o seu detector de intrusão}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.70\textwidth]{_figs/fig_b_01.png}
+\caption{\textbf{b)} pontuações do teste temporal por classe verdadeira, eixo $y$ em escala
+log. O corte 0,5 (tracejado) encosta no pico benigno da quinta-feira.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{_figs/fig_c_02.png}
+\caption{\textbf{c)} curvas ROC e Precision-Recall no teste temporal. A referência do acaso é
+0,500 na ROC e a prevalência, 0,3349, na PR.}
+\end{figure}
+
+\resp{b.1 --- onde está a dúvida e o corte 0,5 cai em região vazia ou povoada?}
+
+O modelo é confiante na maioria dos casos --- \textbf{75,6\%} dos fluxos recebem pontuação
+exatamente 0 ou 1 --- mas o corte 0,5 \textbf{não} passa por região vazia: \textbf{885 fluxos}
+(2,8\%) estão na faixa [0,45; 0,55]. A zona de dúvida tem duas regiões de natureza oposta.
+
+\textbf{Um pico encostado no corte por baixo.} A faixa (0,45; 0,50] tem \textbf{686 fluxos,
+dos quais 617 benignos}; os 69 ataques restantes são quase todos \texttt{DoS GoldenEye} (65).
+E esses benignos não estão espalhados: \textbf{608 dos 617 vêm da quinta-feira}, exatamente o
+dia em que a prevalência de ataque cai de 0,2030 no treino para 0,0050 no teste. A metade de
+treino daquele dia é dominada por \texttt{Web Attack} e \texttt{Infiltration}, tráfego HTTP
+parecido com navegação legítima; o modelo aprendeu uma fronteira difusa sobre o HTTP da quinta
+e, na metade de teste --- quase toda benigna ---, pontua esse mesmo tráfego perto de 0,47. No
+corte 0,5 esses 617 fluxos estão \emph{corretos}, por margem mínima: o risco não é o erro
+atual, é a fragilidade. Baixar o limiar para 0,45 os converteria em falsos positivos para
+recuperar 69 ataques --- \textbf{9 alertas falsos por ataque}, quase todos de um único dia.
+
+\textbf{Um aglomerado de ataques bem abaixo.} Entre 0,15 e 0,30 a composição se inverte:
+(0,15; 0,20] tem 298 ataques contra 94 benignos, e (0,20; 0,25] tem 308 contra 55. São ataques
+reconhecidos parcialmente que o corte descarta --- falsos negativos por margem. Ao todo,
+[0,2; 0,8] contém \textbf{1.767 fluxos (5,59\%)}: 934 benignos e 833 ataques.
+
+O 0,5 é a pior posição possível dentro dessa distribuição: fica em cima do pico benigno, onde o
+custo marginal de baixar o limiar é máximo, e acima do aglomerado de ataques, onde estaria o
+ganho.
+
+\resp{c.1 --- as duas áreas contam a mesma história? Qual levar ao gestor do SOC?}
+
+\textbf{ROC-AUC = 0,9961} e \textbf{PR-AUC = 0,9928} contam a mesma história. A prevalência de
+ataque no teste é \textbf{0,3349}, então a classe positiva não é rara --- ROC e PR só se
+descolam quando os negativos superam a fila de alertas em ordens de grandeza, e aqui são
+21.025 negativos contra 9.886 alertas no corte 0,5.
+
+Levaria a \textbf{PR-AUC}, porque o seu denominador é a fila que o analista abre. E porque a
+prevalência de 33\% é artefato da captura controlada: numa rede real ela cai ordens de
+grandeza, e nesse cenário a PR-AUC despenca enquanto a ROC-AUC quase não se move. Nenhuma das
+duas escolhe o limiar: são médias sobre todos os cortes, e o SOC opera em um só.
+
+\resp{c.2 --- o recall da classe difícil é compatível com o global?}
+
+Recall global em 0,5: \textbf{0,9179} (9.718 de 10.587). A comparação direta é impossível no
+split principal: \textbf{\texttt{DoS slowloris} e \texttt{DoS Slowhttptest} não têm linhas no
+teste}. A causa é o corte de 70\% sobre a \texttt{ordem\_captura} do dia inteiro: na quarta ele
+cai em 437.558, enquanto slowloris termina em 69.271, Slowhttptest em 74.859 e DoS Hulk em
+330.978 --- as três caem inteiras no treino. O mesmo elimina \texttt{Bot}, \texttt{FTP-Patator}
+e os três \texttt{Web Attack}: \textbf{treino com 14 rótulos, teste com 7}.
+
+No split auxiliar por (\texttt{dia}, \texttt{Label}): slowloris \textbf{0,9960}, Slowhttptest
+\textbf{0,9024}, agregado \textbf{0,9501}, contra global de 0,9331 nesse mesmo split.
+
+O limiar único falha mesmo no split principal: \texttt{DDoS} 0,9978 e \texttt{SSH-Patator}
+0,9904 convivem com \texttt{DoS GoldenEye} \textbf{0,7025} e com \texttt{Infiltration},
+\texttt{Heartbleed} e \texttt{PortScan} em \textbf{0,0000}. \texttt{DDoS} é 65\% dos ataques do
+teste e domina a média. O \texttt{GoldenEye} explica o mecanismo: 65 dos seus fluxos estão na
+faixa (0,45; 0,50] do item b), ou seja, \textbf{o corte 0,5 atravessa a classe em vez de
+separá-la}.
+
+\resp{d.1 --- qual limiar maximiza o F1 e quantos falsos positivos a mais ou a menos?}
+
+Na grade de 0,05 o F1 máximo é \textbf{0,9521 no limiar 0,55}, contra 0,9493 em 0,50: são
+\textbf{$-150$ falsos positivos} (168 $\to$ 18), \textbf{$+82$ falsos negativos} (869 $\to$
+951) e $-232$ alertas. O número isolado engana, por dois motivos.
+
+\textbf{A curva de F1 é bimodal.} Há um segundo máximo em \textbf{0,15, com F1 = 0,9513} ---
+0,0008 abaixo. Os dois pontos estão empatados pela métrica e são operacionalmente opostos: em
+0,15 o recall é \textbf{0,9962} (40 ataques perdidos) com 1.041 FP; em 0,55 cai para
+\textbf{0,9102} (951 perdidos) com 18 FP. \textbf{O F1 trata como equivalentes um detector que
+deixa passar 40 ataques e outro que deixa passar 951}, porque pondera precisão e recall
+igualmente --- escolha que nada tem a ver com o custo de um incidente.
+
+\textbf{A grade de 0,05 erra o pico.} A malha fina mostra o F1 máximo em \textbf{0,53}
+(0,9524), não em 0,55. A causa é o degrau do item b): entre 0,49 e 0,51 os falsos positivos
+despencam de 360 para 84 --- os 617 benignos da quinta-feira saindo da fila de uma vez. Um
+passo de 0,05 atravessa esse degrau sem enxergá-lo.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.96\textwidth]{_figs/fig_e_04.png}
+\caption{\textbf{e)} custo contra limiar, decomposto nas duas parcelas (escala log), e volume
+de alertas contra a capacidade do SOC. As duas linhas horizontais do painel direito nunca são
+cruzadas pela curva de alertas.}
+\end{figure}
+
+\resp{e.1 --- qual limiar minimiza o custo e quanto economiza?}
+
+O custo mínimo é \textbf{R\$ 48.384 no limiar 0,05}, contra R\$ 2.174.516 em 0,50 e
+R\$ 2.377.716 em 0,55 (F1 máximo): economia de \textbf{R\$ 2.126.132 (97,8\%)} sobre o corte
+padrão e \textbf{R\$ 2.329.332 (98,0\%)} sobre o F1 máximo.
+
+A razão $C_{FN}/C_{FP}$ é de \textbf{208 para 1}: um ataque perdido custa o equivalente a 208
+alertas falsos, e com esse preço quase qualquer volume de triagem se paga. Em 0,05 os 2.157
+falsos positivos custam R\$ 25.884 e os 9 ataques perdidos custam R\$ 22.500 --- \textbf{as
+duas parcelas se equilibram, e é isso que caracteriza o ótimo}. Em 0,55, a economia de
+R\$ 25.668 em triagem é comprada ao preço de 942 ataques a mais passando, ou R\$ 2.355.000.
+
+O F1 máximo é o pior dos três. Ele pondera precisão e recall igualmente, o que equivale a
+assumir $C_{FP} = C_{FN}$ --- hipótese que este cenário contradiz por duas ordens de grandeza.
+
+\resp{e.2 --- o custo mínimo respeita a capacidade? E se o FN custar cinco vezes mais?}
+
+\textbf{Não, e nenhum limiar respeita.} A capacidade é de \textbf{3.161 alertas} (10\% dos
+31.612 fluxos). O limiar de custo mínimo gera \textbf{12.735 alertas, 4,0$\times$ a
+capacidade}. Mas o problema não é o limiar: mesmo em \textbf{1,0}, o corte mais conservador
+possível, o modelo ainda emite \textbf{7.848 alertas, 2,5$\times$ a capacidade}, com recall de
+0,7412. A coluna \texttt{cabe\_capacidade} é falsa nas 19 linhas da grade, e a malha fina de
+0,95 a 1,00 confirma: \textbf{não existe ``menor custo dentro da capacidade'' neste cenário}.
+
+A causa é estrutural --- a prevalência de ataque no teste é \textbf{33,5\%}, ou seja, há 10.587
+ataques reais num período em que o SOC só tria 3.161 eventos. Mesmo um detector perfeito, com
+zero falsos positivos, estouraria a capacidade em 3,3$\times$. O gargalo não é a precisão do
+modelo, é o dimensionamento do time.
+
+\textbf{Recomendação:} operar em \textbf{0,05} e tratar a capacidade como decisão de gestão. Os
+números sustentam a conta: o excedente de 9.574 alertas custaria \textbf{R\$ 114.888} para ser
+triado a R\$ 12 cada; deixá-lo virar fila custaria \textbf{R\$ 19.880.992}, porque 83,1\% desses
+alertas são ataques reais que ficariam sem resposta. \textbf{Absorver o excedente é
+173$\times$ mais barato que ignorá-lo} --- na prática, automação de triagem ou um segundo
+estágio de classificação, não mais analistas na proporção necessária.
+
+\textbf{Sensibilidade.} Com $C_{FN}$ 5$\times$ maior (R\$ 12.500) \textbf{a decisão não muda}:
+o ótimo continua em 0,05 e o custo sobe para R\$ 138.384, porque o ótimo já saturou na ponta
+baixa da grade. O ponto de virada está no sentido oposto --- o limiar só sobe quando $C_{FN}$
+cai abaixo de $\sim$R\$ 1.000 (83$\times$ $C_{FP}$), indo a 0,10; abaixo de $\sim$R\$ 250 vai a
+0,15; e só com $C_{FN} = C_{FP}$ o ótimo salta para 0,55, coincidindo com o F1 máximo. Qualquer
+estimativa de custo de incidente acima de R\$ 1.000 leva ao mesmo limiar.
+
+\resp{f.1 --- qual estimativa é mais otimista e qual descreve a semana que vem?}
+
+A \textbf{validação cruzada}: PR-AUC \textbf{0,9987 $\pm$ 0,0003} contra \textbf{0,9928} do
+split temporal (otimismo $+0{,}0059$); ROC-AUC 0,9994 $\pm$ 0,0001 contra 0,9961
+($+0{,}0032$). O mecanismo é o embaralhamento --- cada fold sorteia exemplos ao longo de toda a
+captura, e o modelo treina com o fim de uma campanha para ser testado no seu início. O desvio
+padrão minúsculo confirma: os cinco folds são o mesmo problema. \textbf{O número que descreve a
+semana que vem é o temporal, 0,9928.}
+
+\textbf{O otimismo agregado é desprezível, e é aí que está a armadilha.} O recall por classe,
+medido nos dois regimes, desmente a leitura tranquilizadora:
+
+\begin{center}\small
+\begin{tabular}{lrrr}
+\toprule
+classe & recall na CV & recall temporal & queda\\
+\midrule
+\textbf{Bot} & 0,9701 & \textbf{0,1486} & \textbf{0,8214}\\
+Web Attack - Sql Injection & 0,9524 & 0,5714 & 0,3810\\
+Heartbleed & 1,0000 & 0,7500 & 0,2500\\
+DoS Slowhttptest & 0,9988 & 0,9024 & 0,0964\\
+DoS Hulk & 0,9960 & 0,9018 & 0,0941\\
+DoS slowloris & 0,9976 & 0,9960 & 0,0016\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+O \texttt{Bot} cai de \textbf{0,9701 para 0,1486} --- queda de \textbf{0,8214}, cento e quarenta
+vezes o movimento da PR-AUC agregada. É o mesmo efeito do Roteiro 2 (lá, 0,96 $\to$ 0,16),
+agora reproduzido sobre o split temporal deste notebook em vez de apenas citado. Ele some na
+média por aritmética: as três classes que perdem mais de 0,10 de recall somam \textbf{4,7\% dos
+ataques}, e a área é dominada pelos 95\% restantes. Note ainda a assimetria \emph{dentro} da
+classe difícil: \texttt{slowloris} praticamente não sofre (0,0016), enquanto
+\texttt{Slowhttptest} perde 0,0964 --- duas campanhas do mesmo dia, da mesma família, com
+resistências diferentes ao drift.
+
+O número oficial é a \textbf{PR-AUC temporal, 0,9928}, e ele \textbf{precisa vir com o recall
+por classe}: o envelhecimento do detector não aparece na área, acontece uma família por vez, e
+a primeira a ir é a de baixo volume --- justamente a que a média protege da vista.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{_figs/fig_f_05.png}
+\caption{\textbf{f)} as áreas agregadas quase não se movem entre os dois regimes, enquanto o
+recall por classe desaba. A linha tracejada marca a queda da PR-AUC agregada, 0,0059.}
+\end{figure}
+
+\section{Parte B --- fraude em cartão: Random Forest contra XGBoost}
+
+{\small Split temporal por \texttt{Time}: treino 199.364 (384 fraudes, prevalência 0,00193),
+teste 85.443 (108 fraudes, 0,00126). 29 features: V1--V28 e \texttt{Amount};
+\texttt{scale\_pos\_weight} $= 198.980/384 = 518{,}18$.}
+
+\resp{g.1 --- as duas áreas ordenam os modelos da mesma forma?}
+
+\textbf{Não --- elas se contradizem}, o caso previsto para classes raras: Random Forest dá
+ROC-AUC 0,9376 e PR-AUC \textbf{0,8237}; XGBoost dá ROC-AUC \textbf{0,9797} e PR-AUC 0,8113. A
+explicação está nos denominadores. Com 85.335 legítimas contra 108 fraudes, os 10 falsos
+positivos do XGBoost e o 1 do Random Forest são indistinguíveis de zero na taxa de falsos
+positivos --- a ROC do XGBoost é melhor porque ele ordena melhor o \emph{grosso} dos negativos,
+algo que ninguém no time de fraude percebe. Já a precisão tem o número de alertas no
+denominador: em 78 e 93 alertas, 10 FP contra 1 são 9 pontos percentuais (0,893 contra 0,987),
+pagos por clientes com a compra travada.
+
+\textbf{Mas escolher um modelo por uma diferença de 0,0124 num teste com 108 fraudes exige
+saber se ela sobrevive à reamostragem.} Bootstrap pareado, 1.000 repetições sobre as mesmas
+linhas para os dois modelos:
+
+\begin{center}\small
+\begin{tabular}{lrrr}
+\toprule
+diferença (RF $-$ XGB) & observada & IC 95\% & P(RF > XGB)\\
+\midrule
+PR-AUC & $+0{,}0124$ & \textbf{[$-0{,}0113$; $+0{,}0389$]} & 0,836\\
+ROC-AUC & $-0{,}0421$ & [$-0{,}0674$; $-0{,}0206$] & 0,000\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+O resultado é desconfortável e instrutivo. \textbf{A única diferença estatisticamente sólida
+entre os dois modelos é a da ROC-AUC --- e ela aponta para o XGBoost, na métrica que não serve
+para este problema.} Na PR-AUC o intervalo \textbf{cruza o zero}: o Random Forest fica à frente
+em 83,6\% das reamostragens, longe dos 97,5\% que autorizariam afirmar vantagem.
+
+A resposta honesta é: \textbf{usaria a PR-AUC, mas ela não decide sozinha aqui.} Ela impede a
+conclusão errada --- escolher o XGBoost porque ordena melhor 85.335 transações que ninguém vai
+olhar --- mas não tem resolução para separar os dois modelos com 108 fraudes. Quem decide é o
+item h), em reais: lá a diferença entre as combinações é de \textbf{R\$ 2.019,25}.
+
+\resp{g.2 --- no corte 0,5, os dois modelos erram do mesmo jeito?}
+
+Não: erram de formas \textbf{opostas} com total quase idêntico. O Random Forest é
+\textbf{conservador} --- FP $=1$, FN $=31$, TP $=77$, recall 0,7130, precisão 0,9872 ---
+emitindo \emph{um único} falso positivo em 85.335 legítimas e pagando com 31 fraudes perdidas.
+O XGBoost é \textbf{agressivo} --- FP $=10$, FN $=25$, TP $=83$, recall 0,7685, precisão
+0,8925: o \texttt{scale\_pos\_weight} de 518,18 empurra as pontuações positivas para cima e ele
+captura 6 fraudes a mais ao preço de 9 falsos positivos a mais. Em erros totais, 32 contra 35;
+qual é melhor depende do preço de cada um --- 9 FP custam R\$ 45, e 6 fraudes podem custar de
+R\$ 0 a R\$ 25.691. Nenhum dos dois produz pontuação exatamente 0,5 aqui, então
+\texttt{predict()} e \texttt{p >= 0,5} coincidem e a comparação não depende da convenção de
+desempate (ao contrário da Parte A, com 102 empates no corte).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.49\textwidth]{_figs/fig_h_06.png}\hfill
+\includegraphics[width=0.49\textwidth]{_figs/fig_i_08.png}
+\caption{\textbf{h)} custo dos dois modelos com FN $=$ valor da fraude e FP $=$ R\$ 5,00.
+\textbf{i)} falsos positivos por 1.000 legítimas por hora, com IC 95\% de Wilson.}
+\end{figure}
+
+\resp{h.1 --- qual combinação de modelo e limiar minimiza o custo?}
+
+\textbf{Random Forest no limiar 0,15}, com \textbf{R\$ 2.636,48}, contra R\$ 4.655,73 do mesmo
+modelo em 0,5 (economia de \textbf{R\$ 2.019,25}, ou 43,4\%), R\$ 2.825,96 do XGBoost em 0,5 e
+R\$ 2.820,96 do XGBoost no seu ótimo (0,70). O Random Forest \emph{no corte padrão} é o pior
+dos quatro cenários: sua postura conservadora é a errada quando o FP custa R\$ 5 e o FN custa o
+valor da transação. Baixar o limiar para 0,15 converte conservadorismo em recall --- os FP
+sobem de 1 para 20 (R\$ 95 a mais de fricção) e as fraudes perdidas caem de 31 para 23,
+recuperando \textbf{R\$ 2.114,25}.
+
+\textbf{O ótimo da grade é mesmo o ótimo?} Em passos de 0,01 o mínimo real está em
+\textbf{0,18, com R\$ 2.616,48} --- apenas R\$ 20,00 abaixo. A malha fina revela um degrau:
+entre 0,18 e 0,19 o custo salta de R\$ 2.616 para R\$ 2.839, porque \textbf{uma única fraude}
+de pouco mais de R\$ 200 cruza o corte. Essa é a escala real da decisão.
+
+\textbf{A recomendação é robusta ao preço do falso positivo}, a hipótese mais frágil do
+cenário: varrendo de R\$ 1 a R\$ 100 por alerta, o \textbf{Random Forest vence em toda a
+faixa}, com limiar ótimo em 0,10 (R\$ 1), 0,15 (R\$ 2 a R\$ 10) e 0,30 (R\$ 20 a R\$ 100). A
+conclusão só mudaria se o preço do alerta estivesse errado por um fator de quatro ou mais.
+
+\resp{h.2 --- o limiar de custo mínimo coincide com o de F1 máximo?}
+
+\textbf{Para o Random Forest, não}: custo mínimo em 0,15, F1 máximo em 0,30 --- diferença de
+R\$ 144,48. Para o XGBoost os dois coincidem em 0,70, o que mostra que a coincidência é
+acidental, não uma propriedade. O \texttt{describe()} do \texttt{Amount} dos falsos negativos
+explica: em 0,15 são 23 fraudes perdidas somando R\$ 2.536,48 (mediana R\$ 7,59, média
+R\$ 110,28, máximo R\$ 1.096,99); em 0,30 são 25 somando R\$ 2.775,96 (mediana R\$ 7,59, média
+R\$ 111,04, mesmo máximo). As distribuições são quase idênticas em forma; o que muda são
+\textbf{duas fraudes, que valem R\$ 239,48}. Para o F1 elas valem o mesmo que qualquer outra,
+porque ele conta \emph{unidades}: subir de 0,15 para 0,30 elimina 19 falsos positivos e melhora
+a precisão, e a métrica registra ganho. Em reais, esses 19 FP valiam R\$ 95,00 contra
+R\$ 239,48 das duas fraudes --- prejuízo líquido de R\$ 144,48. A distribuição do
+\texttt{Amount} é fortemente assimétrica (mediana R\$ 7,59, média R\$ 110, máximo R\$ 1.097), e
+é essa assimetria que separa as métricas: o F1 otimiza a contagem, o custo otimiza a soma.
+
+\resp{i.1 --- os erros são uniformes? Quem paga a conta dos falsos positivos?}
+
+\textbf{Por valor, a resposta exige cuidado estatístico.} O recall global é 0,7870, e por
+quartil de \texttt{Amount}:
+
+\begin{center}\small
+\begin{tabular}{llrrlr}
+\toprule
+quartil & faixa de \texttt{Amount} & fraudes & recall & IC 95\% (Wilson) & perda não detect.\\
+\midrule
+Q1 & R\$ 0,00 -- 5,00 & 54 & 0,8148 & [0,692; 0,896] & R\$ 14,32\\
+\textbf{Q2} & R\$ 5,01 -- 20,00 & \textbf{11} & \textbf{0,4545} & \textbf{[0,213; 0,720]} & R\$ 72,30\\
+Q3 & R\$ 20,01 -- 72,16 & 10 & 0,8000 & [0,490; 0,943] & R\$ 65,00\\
+Q4 & R\$ 72,18 -- 25.691,16 & 33 & 0,8485 & [0,691; 0,934] & R\$ 2.384,86\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+O Q2 marca 0,4545, bem abaixo dos demais --- mas são \textbf{5 acertos em 11 fraudes}, com
+intervalo de Wilson de 0,213 a 0,720. O intervalo do recall global é [0,701; 0,854].
+\textbf{Os dois se tocam}, ainda que por pouco: a diferença \textbf{não é estatisticamente
+distinguível}, e reportá-la como ``o modelo falha entre R\$ 5 e R\$ 20'' afirmaria mais do que
+os dados sustentam. O que se pode dizer é que há um \textbf{sinal} a vigiar, plausível por um
+mecanismo conhecido --- é ali que o fraudador testa o cartão antes do golpe grande, e o custo
+não está nos R\$ 72,30 perdidos, mas na fraude maior que o teste habilita depois. A recomendação
+é \textbf{monitorar esse quartil com amostra maior}, não recalibrar com base em 11 casos. O
+fato sólido sobre valor é outro: o \textbf{Q4 concentra R\$ 2.384,86 das R\$ 2.536,48 perdidas
+(94\%)}.
+
+\textbf{Por hora, o viés sobrevive ao teste.} A média global é \textbf{0,234 FP por 1.000
+legítimas} (20 em 85.335) e a hora \textbf{22} marca \textbf{0,929}, quatro vezes a média. A
+incerteza também é grande --- 6 falsos positivos --- mas o intervalo de Wilson da hora 22,
+\textbf{[0,426; 2,026]}, fica \textbf{inteiramente acima} da média global. É a única hora para
+a qual isso vale, e basta: \textbf{a diferença não é artefato de amostra pequena.}
+
+Quem paga a conta \textbf{não são todos os clientes, é um grupo específico}: quem transaciona
+tarde da noite. Como o volume legítimo cai à noite (6.458 transações na hora 22 contra 8.659 na
+hora 16) e a fração de fraude sobe, o modelo aprendeu que ``tarde da noite'' é sinal de risco e
+transfere o atrito para uma faixa horária --- o \emph{erro desigual} da literatura, invisível em
+relatórios que só reportam a média.
+
+\resp{i.2 --- três limitações que impedem generalizar para um banco brasileiro hoje}
+
+\textbf{1. Origem e período: dois dias de 2013, de uma adquirente europeia.} O dataset cobre 48
+horas de setembro de 2013, e nosso teste é mais estreito ainda --- os 30\% finais cobrem apenas
+as \textbf{horas 12 a 23 de um único dia}. Toda a análise horária acima mede meio dia: não há
+madrugada nem manhã, e o ``padrão horário'' aprendido pode ser o perfil daquela tarde. Treze
+anos depois o mix brasileiro é outro (PIX, carteiras digitais, parcelamento, fração muito maior
+de cartão não presente), e a prevalência de 0,17\% é um parâmetro daquele adquirente naquele
+mês --- justamente o parâmetro que define a PR-AUC de referência e todo o cálculo de custo.
+
+\textbf{2. As features V1--V28 são componentes de PCA anônimos.} Não se sabe o que medem, com
+três consequências: o modelo é \emph{irreplicável} (não há como calcular V1--V28 no fluxo de
+outro banco sem a matriz original, não distribuída); é \emph{inauditável} (não se explica a um
+cliente, ouvidor ou regulador por que a compra foi negada, o que colide com o direito à
+explicação sobre decisões automatizadas da LGPD, art. 20); e não se pode \emph{verificar viés}
+--- se alguma componente carrega informação correlacionada a região, renda ou tipo de
+estabelecimento, não há como detectar. Não à toa, o único viés que conseguimos evidenciar veio
+de \texttt{Time} e \texttt{Amount}, as duas colunas não transformadas.
+
+\textbf{3. Os rótulos vêm de contestação do cliente, não de verdade observada.} Uma transação é
+``fraude'' porque alguém a contestou e a contestação foi aceita. Fraude não percebida ---
+valores baixos, cartões pouco usados, portadores idosos --- está rotulada como \emph{legítima},
+e o modelo aprende a não vê-la. O viés é sistemático e aponta na mesma direção do ponto cego do
+Q2: R\$ 5--20 é onde a fraude menos é contestada e onde o recall é pior. Não há como separar
+limitação do modelo de rótulo faltante com estes dados, e por isso qualquer recall aqui é um
+limite superior otimista sobre a fraude real.
+
+\section{Parecer ao gestor do time de fraude}
+
+{\small\itshape 250 palavras, conforme o limite do enunciado; a contagem é verificada por
+asserção no próprio notebook.}
+
+\textbf{Recomendação:} Random Forest (\texttt{class\_weight="balanced\_subsample"},
+\texttt{min\_samples\_leaf=2}) no limiar \textbf{0,15}, não no 0,5 padrão.
+
+\textbf{Modelo.} O XGBoost tem ROC-AUC melhor, mas com prevalência de 0,126\% a ROC é dominada
+pelas 85.335 transações legítimas e não enxerga a fila de alertas. Pela PR-AUC, cujo
+denominador é o número de alertas, o Random Forest fica à frente --- embora o bootstrap mostre
+que essa vantagem não se distingue de ruído. Quem decide é o custo.
+
+\textbf{Limiar.} No corte 0,5 o modelo custa \textbf{R\$ 4.655,73} no período; em 0,15 custa
+\textbf{R\$ 2.636,48}, economia de \textbf{43,4\%}. A troca é barata: 19 falsos positivos a
+mais (R\$ 95 de fricção) recuperam R\$ 2.114,25 em fraude. O limiar de F1 máximo custaria
+R\$ 144,48 a mais, porque o F1 conta erros e aqui eles valem de R\$ 0 a R\$ 1.097. A
+recomendação não muda se o custo do falso positivo for de R\$ 1 a R\$ 100.
+
+\textbf{Volume.} \textbf{105 alertas} em 85.443 transações, 1,23 por 1.000 --- cabe em qualquer
+triagem.
+
+\textbf{Recall.} \textbf{0,7870} global. A faixa de R\$ 5 a R\$ 20 cai a 0,4545, mas com 11
+fraudes o intervalo é largo demais para tratar como fato: é sinal a vigiar.
+
+\textbf{Validação.} Reportar sempre split temporal; validação cruzada embaralhada é otimista.
+
+\textbf{Monitorar:} custo semanal contra os R\$ 2.636 previstos; recall por quartil de
+\texttt{Amount}, com alarme se a pior faixa cair abaixo de 0,40 em amostra maior; falsos
+positivos por 1.000 legítimas por hora, hoje 0,234; deriva da prevalência; e recalibração
+mensal do limiar.
+
+\end{document}
